@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Suivi GPS Ambulance</title>
+    <style>
+        body { background-color: #0A0A0A; color: white; font-family: sans-serif; text-align: center; padding-top: 50px; }
+        .status { color: #3498db; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>🛰️ GPS AMBULANCE ACTIVÉ</h1>
+    <p>Statut : <span id="statut" class="status">Recherche du signal...</span></p>
+    <p id="coords"></p>
+
+    <script>
+        const webhookUrl = "http://localhost:5678/webhook-test/somnolence-alerte";
+
+        if ("geolocation" in navigator) {
+            // watchPosition suit le mouvement en temps réel
+            navigator.geolocation.watchPosition((pos) => {
+                const lat = pos.coords.latitude;
+                const lon = pos.coords.longitude;
+                
+                document.getElementById("statut").innerText = "En mouvement";
+                document.getElementById("coords").innerText = `Lat: ${lat.toFixed(5)} | Lon: ${lon.toFixed(5)}`;
+
+                // Envoi automatique à n8n à chaque changement de position
+                fetch(webhookUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        alert_type: "GPS_UPDATE",
+                        driver_id: "Bassma_01",
+                        lat: lat,
+                        lon: lon,
+                        timestamp: new Date().toISOString()
+                    })
+                });
+            }, (err) => {
+                document.getElementById("statut").innerText = "Erreur GPS : " + err.message;
+            }, { enableHighAccuracy: true });
+        }
+    </script>
+</body>
+</html>
