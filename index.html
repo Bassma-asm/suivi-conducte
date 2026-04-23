@@ -26,7 +26,6 @@
             height: 100vh;
         }
 
-        /* En-tête */
         header {
             padding: 20px;
             text-align: center;
@@ -45,14 +44,12 @@
             text-shadow: 0 0 10px rgba(52, 152, 219, 0.5);
         }
 
-        /* Carte Plein Écran */
         #map {
             height: 100vh;
             width: 100vw;
             z-index: 1;
         }
 
-        /* Panneau de contrôle flottant */
         .dashboard-overlay {
             position: absolute;
             bottom: 30px;
@@ -115,7 +112,6 @@
             100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(46, 204, 113, 0); }
         }
 
-        /* Style spécifique pour Leaflet (Mode Nuit) */
         .leaflet-container { background: #0b0d10 !important; }
         .leaflet-tile-pane { filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3); }
     </style>
@@ -151,15 +147,15 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
     <script>
+        // CONFIGURATION WEBHOOK
         const webhookUrl = "http://localhost:5678/webhook-test/somnolence-alerte";
         let map, marker, circle;
+        let lastSendTime = 0; 
 
-        // 1. Initialisation de la carte
         function initMap() {
             map = L.map('map', { zoomControl: false }).setView([32.2927, -9.2345], 15);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
             
-            // Icône personnalisée style Tesla
             const teslaIcon = L.divIcon({
                 className: 'custom-div-icon',
                 html: "<div style='background-color:#3498db; width:15px; height:15px; border-radius:50%; border:3px solid white; box-shadow: 0 0 15px #3498db;'></div>",
@@ -171,16 +167,22 @@
             circle = L.circle([32.2927, -9.2345], { radius: 20, color: '#3498db', fillOpacity: 0.1 }).addTo(map);
         }
 
-        // 2. Envoi des données à n8n
         async function sendToN8n(pos) {
+            const currentTime = Date.now();
+            
+            // On vérifie si 20 secondes se sont écoulées (20000ms)
+            if (currentTime - lastSendTime < 20000) {
+                return; 
+            }
+
+            lastSendTime = currentTime;
+
             const payload = {
-                alert_type: "GPS_LIVE",
+                alert_type: "GPS_UPDATE", // Correspond au "if" dans ton n8n
                 driver_id: "Bassma_01",
-                vehicle_id: "AMBULANCE-PRO-01",
                 lat: pos.coords.latitude,
                 lon: pos.coords.longitude,
                 speed: pos.coords.speed ? (pos.coords.speed * 3.6).toFixed(0) : 0,
-                accuracy: pos.coords.accuracy.toFixed(0),
                 timestamp: new Date().toISOString()
             };
 
@@ -190,12 +192,12 @@
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(payload)
                 });
+                console.log("Position transmise à n8n");
             } catch (e) {
-                console.error("Transmission failed");
+                console.error("Erreur de transmission");
             }
         }
 
-        // 3. Suivi GPS en temps réel
         if ("geolocation" in navigator) {
             initMap();
             
@@ -203,22 +205,20 @@
                 const { latitude, longitude, speed, accuracy } = pos.coords;
                 const latlng = [latitude, longitude];
 
-                // Mise à jour UI
+                // Mise à jour visuelle immédiate
                 document.getElementById('speed').innerText = speed ? (speed * 3.6).toFixed(0) : "0";
                 document.getElementById('accuracy').innerText = accuracy.toFixed(0);
                 
-                // Mise à jour Carte
                 marker.setLatLng(latlng);
                 circle.setLatLng(latlng);
                 circle.setRadius(accuracy);
                 map.panTo(latlng);
 
-                // Transmission
+                // Tentative d'envoi (le filtre de 20s est géré dans la fonction)
                 sendToN8n(pos);
 
             }, (err) => {
                 document.getElementById('status-text').innerText = "GPS DÉCONNECTÉ";
-                document.getElementById('status-container').style.borderColor = "#e74c3c";
                 document.getElementById('status-container').style.color = "#e74c3c";
             }, {
                 enableHighAccuracy: true,
