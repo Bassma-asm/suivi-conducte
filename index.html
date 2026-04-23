@@ -2,44 +2,229 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Suivi GPS Ambulance</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ambulance Pro - Driver Terminal</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet">
+    
     <style>
-        body { background-color: #0A0A0A; color: white; font-family: sans-serif; text-align: center; padding-top: 50px; }
-        .status { color: #3498db; font-weight: bold; }
+        :root {
+            --tesla-red: #E81922;
+            --tesla-blue: #3498db;
+            --bg-dark: #0A0B0D;
+            --card-bg: rgba(30, 31, 34, 0.95);
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-dark);
+            color: white;
+            font-family: 'Rajdhani', sans-serif;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        /* En-tête */
+        header {
+            padding: 20px;
+            text-align: center;
+            background: linear-gradient(to bottom, #1a1a1a, transparent);
+            position: absolute;
+            width: 100%;
+            z-index: 1000;
+        }
+
+        h1 {
+            margin: 0;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.2rem;
+            letter-spacing: 2px;
+            color: var(--tesla-blue);
+            text-shadow: 0 0 10px rgba(52, 152, 219, 0.5);
+        }
+
+        /* Carte Plein Écran */
+        #map {
+            height: 100vh;
+            width: 100vw;
+            z-index: 1;
+        }
+
+        /* Panneau de contrôle flottant */
+        .dashboard-overlay {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 400px;
+            background: var(--card-bg);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .stat-box {
+            text-align: center;
+            padding: 10px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 12px;
+        }
+
+        .label { font-size: 0.8rem; color: #888; text-transform: uppercase; }
+        .value { font-size: 1.4rem; font-weight: 700; color: white; display: block; }
+        .unit { font-size: 0.7rem; color: var(--tesla-blue); }
+
+        .status-bar {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 10px;
+            border-radius: 30px;
+            background: rgba(46, 204, 113, 0.1);
+            border: 1px solid rgba(46, 204, 113, 0.3);
+            color: #2ecc71;
+            font-weight: bold;
+        }
+
+        .pulse {
+            width: 10px;
+            height: 10px;
+            background: #2ecc71;
+            border-radius: 50%;
+            box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.7);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(46, 204, 113, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(46, 204, 113, 0); }
+        }
+
+        /* Style spécifique pour Leaflet (Mode Nuit) */
+        .leaflet-container { background: #0b0d10 !important; }
+        .leaflet-tile-pane { filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3); }
     </style>
 </head>
 <body>
-    <h1>🛰️ GPS AMBULANCE ACTIVÉ</h1>
-    <p>Statut : <span id="statut" class="status">Recherche du signal...</span></p>
-    <p id="coords"></p>
 
+    <header>
+        <h1>BASSMA TRUCK - LIVE TELEMETRY</h1>
+    </header>
+
+    <div id="map"></div>
+
+    <div class="dashboard-overlay">
+        <div class="stats-grid">
+            <div class="stat-box">
+                <span class="label">Vitesse</span>
+                <span class="value" id="speed">0</span>
+                <span class="unit">KM/H</span>
+            </div>
+            <div class="stat-box">
+                <span class="label">Précision</span>
+                <span class="value" id="accuracy">0</span>
+                <span class="unit">MÈTRES</span>
+            </div>
+        </div>
+        
+        <div class="status-bar" id="status-container">
+            <div class="pulse"></div>
+            <span id="status-text">TRANSMISSION ACTIVE</span>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
     <script>
         const webhookUrl = "http://localhost:5678/webhook-test/somnolence-alerte";
+        let map, marker, circle;
 
-        if ("geolocation" in navigator) {
-            // watchPosition suit le mouvement en temps réel
-            navigator.geolocation.watchPosition((pos) => {
-                const lat = pos.coords.latitude;
-                const lon = pos.coords.longitude;
-                
-                document.getElementById("statut").innerText = "En mouvement";
-                document.getElementById("coords").innerText = `Lat: ${lat.toFixed(5)} | Lon: ${lon.toFixed(5)}`;
+        // 1. Initialisation de la carte
+        function initMap() {
+            map = L.map('map', { zoomControl: false }).setView([32.2927, -9.2345], 15);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            
+            // Icône personnalisée style Tesla
+            const teslaIcon = L.divIcon({
+                className: 'custom-div-icon',
+                html: "<div style='background-color:#3498db; width:15px; height:15px; border-radius:50%; border:3px solid white; box-shadow: 0 0 15px #3498db;'></div>",
+                iconSize: [21, 21],
+                iconAnchor: [10, 10]
+            });
 
-                // Envoi automatique à n8n à chaque changement de position
-                fetch(webhookUrl, {
+            marker = L.marker([32.2927, -9.2345], { icon: teslaIcon }).addTo(map);
+            circle = L.circle([32.2927, -9.2345], { radius: 20, color: '#3498db', fillOpacity: 0.1 }).addTo(map);
+        }
+
+        // 2. Envoi des données à n8n
+        async function sendToN8n(pos) {
+            const payload = {
+                alert_type: "GPS_LIVE",
+                driver_id: "Bassma_01",
+                vehicle_id: "AMBULANCE-PRO-01",
+                lat: pos.coords.latitude,
+                lon: pos.coords.longitude,
+                speed: pos.coords.speed ? (pos.coords.speed * 3.6).toFixed(0) : 0,
+                accuracy: pos.coords.accuracy.toFixed(0),
+                timestamp: new Date().toISOString()
+            };
+
+            try {
+                await fetch(webhookUrl, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        alert_type: "GPS_UPDATE",
-                        driver_id: "Bassma_01",
-                        lat: lat,
-                        lon: lon,
-                        timestamp: new Date().toISOString()
-                    })
+                    body: JSON.stringify(payload)
                 });
+            } catch (e) {
+                console.error("Transmission failed");
+            }
+        }
+
+        // 3. Suivi GPS en temps réel
+        if ("geolocation" in navigator) {
+            initMap();
+            
+            navigator.geolocation.watchPosition((pos) => {
+                const { latitude, longitude, speed, accuracy } = pos.coords;
+                const latlng = [latitude, longitude];
+
+                // Mise à jour UI
+                document.getElementById('speed').innerText = speed ? (speed * 3.6).toFixed(0) : "0";
+                document.getElementById('accuracy').innerText = accuracy.toFixed(0);
+                
+                // Mise à jour Carte
+                marker.setLatLng(latlng);
+                circle.setLatLng(latlng);
+                circle.setRadius(accuracy);
+                map.panTo(latlng);
+
+                // Transmission
+                sendToN8n(pos);
+
             }, (err) => {
-                document.getElementById("statut").innerText = "Erreur GPS : " + err.message;
-            }, { enableHighAccuracy: true });
+                document.getElementById('status-text').innerText = "GPS DÉCONNECTÉ";
+                document.getElementById('status-container').style.borderColor = "#e74c3c";
+                document.getElementById('status-container').style.color = "#e74c3c";
+            }, {
+                enableHighAccuracy: true,
+                maximumAge: 0,
+                timeout: 5000
+            });
         }
     </script>
 </body>
