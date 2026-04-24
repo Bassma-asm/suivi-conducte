@@ -167,10 +167,9 @@
             circle = L.circle([32.2927, -9.2345], { radius: 20, color: '#3498db', fillOpacity: 0.1 }).addTo(map);
         }
 
-        async function sendToN8n(pos) {
+async function sendToN8n(pos) {
             const currentTime = Date.now();
             
-            // On vérifie si 20 secondes se sont écoulées (20000ms)
             if (currentTime - lastSendTime < 20000) {
                 return; 
             }
@@ -178,7 +177,7 @@
             lastSendTime = currentTime;
 
             const payload = {
-                alert_type: "GPS_UPDATE", // Correspond au "if" dans ton n8n
+                alert_type: "GPS_UPDATE",
                 driver_id: "Bassma_01",
                 lat: pos.coords.latitude,
                 lon: pos.coords.longitude,
@@ -189,7 +188,10 @@
             try {
                 await fetch(webhookUrl, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: { 
+                        "Content-Type": "application/json",
+                        "ngrok-skip-browser-warning": "69420" // <-- CETTE LIGNE DÉBLOQUE TOUT
+                    },
                     body: JSON.stringify(payload)
                 });
                 console.log("Position transmise à n8n");
